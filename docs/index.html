@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DockLens — X-ray your Dockerfile before it ships</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0A0A0B;color:#F5F5F4;
+font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:#7CC0F5;text-decoration:none}
+nav{display:flex;justify-content:space-between;align-items:center;
+padding:18px 32px;border-bottom:1px solid #232329;position:sticky;top:0;
+background:rgba(10,10,11,.92);backdrop-filter:blur(8px);z-index:10}
+.logo{font-weight:800;letter-spacing:-.02em;font-size:18px}
+.logo span{color:#2496ED}
+.navlinks{color:#A1A1AA;font-size:14px;display:flex;gap:24px}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px 90px}
+.badges{display:flex;gap:10px;flex-wrap:wrap;margin:64px 0 20px}
+.badge{border:1px solid #2A2A30;background:#1A1A1E;border-radius:999px;
+padding:6px 14px;font-size:13px;color:#A1A1AA}
+.badge b{color:#F5F5F4}
+h1{font-size:clamp(44px,7vw,84px);line-height:.98;letter-spacing:-.03em;margin:0 0 20px}
+h1 .accent{color:#2496ED}
+.lead{font-size:19px;line-height:1.6;color:#A1A1AA;max-width:640px;margin:0 0 32px}
+.ctas{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:56px}
+.cta{display:inline-block;border-radius:999px;padding:14px 26px;font-weight:700;font-size:15px}
+.cta.primary{background:#2496ED;color:#fff}
+.cta.ghost{border:1px solid #2A2A30;color:#F5F5F4}
+h2{font-size:30px;letter-spacing:-.02em;margin:72px 0 8px}
+.sub{color:#A1A1AA;line-height:1.6;max-width:640px;margin:0 0 24px}
+.editor{background:#111113;border:1px solid #2A2A30;border-radius:20px;overflow:hidden}
+.editorbar{display:flex;align-items:center;gap:8px;padding:12px 18px;
+border-bottom:1px solid #232329;color:#A1A1AA;font-size:13px}
+.dot{width:11px;height:11px;border-radius:50%}
+.srcwrap{position:relative}
+.hilite{position:absolute;left:0;right:0;background:rgba(36,150,237,.16);
+border-left:3px solid #2496ED;border-radius:0 6px 6px 0;pointer-events:none;
+transition:top .45s cubic-bezier(.34,1.25,.64,1),height .45s cubic-bezier(.34,1.25,.64,1)}
+pre.src{margin:0;padding:20px 0;overflow:auto;font-size:13.5px;line-height:28px;
+font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre}
+pre.src div{padding:0 18px;white-space:pre-wrap;word-break:break-all}
+pre.src .ln{color:#71717A;display:inline-block;width:30px;text-align:right;margin-right:14px}
+.kw{color:#7CC0F5;font-weight:700}
+.findings{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-top:20px}
+.finding{background:#1A1A1E;border:1px solid #2A2A30;border-radius:16px;
+padding:16px 18px;cursor:pointer;text-align:left;color:#F5F5F4;font-size:14px}
+.finding:hover{border-color:#2496ED}
+.finding.active{border-color:#2496ED;box-shadow:0 0 0 1px #2496ED}
+.finding .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.pill{border-radius:999px;padding:2px 10px;font-size:11px;font-weight:800;text-transform:uppercase}
+.pill.critical{background:#3D1214;color:#FF8A8A}
+.pill.warning{background:#3A2A08;color:#F5C86B}
+.pill.info{background:#0E2A42;color:#7CC0F5}
+.finding .rule{color:#A1A1AA;font-size:12px}
+.finding .fix{color:#7CC0F5;font-size:13px;margin-top:6px}
+.scorecard{display:flex;gap:24px;align-items:center;background:#1A1A1E;
+border:1px solid #2A2A30;border-radius:24px;padding:28px;margin-top:20px;flex-wrap:wrap}
+.scorecard .num{font-size:64px;font-weight:800;line-height:1}
+.scorecard .num small{font-size:26px;color:#A1A1AA}
+.scorecard .verdict{font-size:20px;font-weight:700;color:#FF8A8A}
+.rules{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:20px}
+.rulecard{background:#1A1A1E;border:1px solid #2A2A30;border-radius:16px;padding:16px 18px}
+.rulecard b{display:block;margin-bottom:4px}
+.rulecard span{color:#A1A1AA;font-size:13px;line-height:1.5;display:block}
+.cmd{background:#111113;border:1px solid #2A2A30;border-radius:16px;
+padding:18px 20px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px;
+display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}
+.cmd button{background:#2496ED;color:#fff;border:0;border-radius:999px;
+padding:8px 18px;font-weight:700;cursor:pointer}
+footer{margin-top:80px;color:#71717A;font-size:13px;border-top:1px solid #232329;padding-top:24px}
+@media(max-width:640px){.navlinks{display:none}}
+</style></head><body>
+<nav><div class="logo">Dock<span>Lens</span></div>
+<div class="navlinks"><span>Zero dependencies</span><span>Python 3.8+</span><span>25 rules</span></div></nav>
+<div class="wrap">
+<div class="badges">
+<span class="badge"><b>CLI</b> · stdlib only</span>
+<span class="badge"><b>0–100</b> score + grade</span>
+<span class="badge"><b>CI gate</b> --fail-on</span>
+<span class="badge">text · JSON · HTML reports</span>
+</div>
+<h1>Your Dockerfile,<br><span class="accent">X-rayed</span> before it ships.</h1>
+<p class="lead">DockLens reads your Dockerfile and flags the mistakes that keep
+reaching production — secrets baked into layers, images running as root,
+unpinned bases, cache-busting COPY order — with a score, a grade, and a
+fix for every finding.</p>
+<div class="ctas">
+<a class="cta primary" href="sample-report.html">See a real sample report →</a>
+<a class="cta ghost" href="#demo">Try the interactive demo</a>
+</div>
+
+<h2 id="demo">One bad Dockerfile, seventeen findings</h2>
+<p class="sub">This is the shipped example, audited by the real tool. Click any
+finding — a single highlight glides to the offending line instead of
+jumping, and the badge morphs with it.</p>
+<div class="editor">
+<div class="editorbar"><span class="dot" style="background:#FF5F57"></span><span class="dot" style="background:#FEBC2E"></span><span class="dot" style="background:#28C840"></span><span style="margin-left:8px">examples/bad/Dockerfile — Score 0/100 · Grade F · FAIL</span></div>
+<div class="srcwrap" id="srcwrap"><div class="hilite" id="hilite"></div>
+<pre class="src" id="src"><div data-line="3"><span class="ln">3</span><span class="kw">FROM</span> node:latest</div><div data-line="4"><span class="ln">4</span><span class="kw">MAINTAINER</span> someone@example.com</div><div data-line="5"><span class="ln">5</span><span class="kw">ENV</span> API_KEY=placeholder-value</div><div data-line="6"><span class="ln">6</span><span class="kw">ARG</span> NPM_TOKEN</div><div data-line="7"><span class="ln">7</span><span class="kw">RUN</span> curl -sSL https://example.com/install.sh | sh</div><div data-line="8"><span class="ln">8</span><span class="kw">RUN</span> apt-get update</div><div data-line="9"><span class="ln">9</span><span class="kw">RUN</span> apt-get install -y ffmpeg git</div><div data-line="10"><span class="ln">10</span><span class="kw">ADD</span> https://example.com/tool.tar.gz /opt/</div><div data-line="11"><span class="ln">11</span><span class="kw">COPY</span> . .</div><div data-line="12"><span class="ln">12</span><span class="kw">RUN</span> NPM_TOKEN=$NPM_TOKEN npm install</div><div data-line="13"><span class="ln">13</span><span class="kw">EXPOSE</span> 22 3000</div><div data-line="14"><span class="ln">14</span><span class="kw">CMD</span> npm start</div></pre>
+</div></div>
+<div class="findings" id="findings"></div>
+
+<div class="scorecard">
+<div><div class="num">0<small>/100</small></div><div class="verdict">Grade F — FAIL</div></div>
+<div style="color:#A1A1AA;line-height:1.6">2 critical · 11 warnings · 4 info findings.<br>Run the clean example instead and it scores 98/100, grade A, CLEAN —<br>its only note is a digest-pinning hint.</div>
+</div>
+
+<h2>Run it</h2>
+<p class="sub">No dependencies. Python 3.8+ standard library only.</p>
+<div class="cmd"><span id="cmdtext">python -m docklens path/to/Dockerfile</span><button id="copybtn">Copy</button></div>
+<div class="cmd" style="margin-top:12px"><span>python -m docklens --fail-on warning path/to/Dockerfile&nbsp;&nbsp;# CI gate</span><span></span></div>
+
+<h2>What it checks</h2>
+<p class="sub">Twenty-five rules, DL01–DL25, across four areas.</p>
+<div class="rules">
+<div class="rulecard"><b>Security</b><span>Secrets in ENV and secret ARGs in RUN, curl piped to a shell, root users, ADD fetching URLs, .env copied into the image, EXPOSE 22, chmod 777, sudo in build steps.</span></div>
+<div class="rulecard"><b>Efficiency</b><span>Unpinned and :latest bases, apt without --no-install-recommends or layer cleanup, split update/install layers, COPY . . before dependency install, apk / pip / npm hygiene.</span></div>
+<div class="rulecard"><b>Reliability</b><span>Shell-form CMD/ENTRYPOINT swallowing signals, missing HEALTHCHECK, missing WORKDIR, multi-stage builds that never COPY --from the artifact.</span></div>
+<div class="rulecard"><b>Maintainability</b><span>Deprecated MAINTAINER, digest-pinning hints, and a readable score so the worst file in the repo is obvious.</span></div>
+</div>
+
+<h2>Outputs</h2>
+<p class="sub">Coloured text for humans, JSON for pipelines, and a single
+self-contained HTML report — like the <a href="sample-report.html">sample report</a> — with severity filters and click-to-source. Exit
+codes: 0 pass, 1 gate tripped, 2 usage or file error.</p>
+
+<footer>DockLens — a zero-dependency Dockerfile auditor. Repo: github.com/judd69/docklens · Source and tests ship in the repo; this page has no external assets.</footer>
+</div>
+<script>
+var findings = [
+[3,"warning","DL01","Base image pinned to :latest","Pin a specific version, or pin by digest."],
+[3,"warning","DL04","Final stage runs as root","Add a non-root user, e.g. USER 10001."],
+[3,"info","DL22","No HEALTHCHECK defined","Add a HEALTHCHECK for your health endpoint."],
+[3,"info","DL25","No WORKDIR set in the final stage","Set WORKDIR /app early in the final stage."],
+[4,"info","DL23","MAINTAINER is deprecated","Use LABEL maintainer instead."],
+[5,"critical","DL05","Secret baked into an ENV layer","Inject secrets at runtime, never ENV them."],
+[7,"critical","DL07","Download piped straight into a shell","Download, verify the checksum, then execute."],
+[8,"warning","DL09","apt-get update cached in its own layer","Combine update and install in one RUN."],
+[9,"warning","DL10","apt-get install pulls recommended packages","Add --no-install-recommends."],
+[9,"warning","DL11","apt lists left in the image layer","End the RUN with rm -rf /var/lib/apt/lists/*"],
+[10,"warning","DL08","ADD fetches a remote URL","Use curl with a checksum check, then COPY."],
+[11,"warning","DL17","COPY . . with no .dockerignore","Add a .dockerignore excluding .env and .git."],
+[11,"warning","DL18","COPY . . before dependency install busts the cache","COPY lockfiles first, install, then COPY source."],
+[12,"warning","DL06","Secret ARG value leaks into a layer","Use a BuildKit secret mount instead."],
+[12,"info","DL14","npm install instead of npm ci","Use npm ci when a lockfile exists."],
+[13,"warning","DL20","SSH port 22 exposed","Remove EXPOSE 22; use docker exec."],
+[14,"warning","DL21","Shell-form CMD swallows signals","Use exec form: CMD [\"node\", \"server.js\"]"]
+];
+var box = document.getElementById("findings");
+var hilite = document.getElementById("hilite");
+var src = document.getElementById("src");
+function select(line, btn){
+  var el = src.querySelector('[data-line="' + line + '"]');
+  if(!el) return;
+  hilite.style.top = el.offsetTop + "px";
+  hilite.style.height = el.offsetHeight + "px";
+  document.querySelectorAll(".finding").forEach(function(b){b.classList.remove("active")});
+  if(btn) btn.classList.add("active");
+  el.scrollIntoView({behavior:"smooth",block:"center"});
+}
+findings.forEach(function(f){
+  var b = document.createElement("button");
+  b.className = "finding";
+  b.innerHTML = '<div class="top"><span class="pill ' + f[1] + '">' + f[1] + '</span><span class="rule">' + f[2] + ' · line ' + f[0] + '</span></div><strong>' + f[3] + '</strong><div class="fix">Fix: ' + f[4] + '</div>';
+  b.addEventListener("click", function(){ select(f[0], b); });
+  box.appendChild(b);
+});
+select(5, box.children[5]);
+document.getElementById("copybtn").addEventListener("click", function(){
+  var t = document.getElementById("cmdtext").textContent;
+  if(navigator.clipboard) navigator.clipboard.writeText(t);
+  this.textContent = "Copied";
+  var self = this;
+  setTimeout(function(){ self.textContent = "Copy"; }, 1500);
+});
+</script>
+</body></html>
